@@ -430,6 +430,10 @@ class VLATrainer(TrainerUtils):
                 action_loss = output_dict["action_loss"]
                 total_loss = action_loss
 
+            if not torch.isfinite(total_loss):
+                raise FloatingPointError(
+                    f"refusing to backpropagate non-finite loss at step {self.completed_steps}"
+                )
             self.accelerator.backward(total_loss)
 
             if os.environ.get("VLA_DEBUG_FINITE"):
@@ -440,7 +444,14 @@ class VLATrainer(TrainerUtils):
                         )
 
             if self.accelerator.sync_gradients and self.config.trainer.gradient_clipping is not None:
-                self.accelerator.clip_grad_norm_(self.model.parameters(), self.config.trainer.gradient_clipping)
+                grad_norm = self.accelerator.clip_grad_norm_(
+                    self.model.parameters(), self.config.trainer.gradient_clipping
+                )
+                if not torch.isfinite(grad_norm):
+                    raise FloatingPointError(
+                        f"refusing optimizer step with non-finite gradient norm "
+                        f"at step {self.completed_steps}"
+                    )
 
             self.optimizer.step()
             if os.environ.get("VLA_DEBUG_FINITE"):
