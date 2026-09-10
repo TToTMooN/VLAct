@@ -19,9 +19,10 @@ TASK_END=${TASK_END:-2}
 TRIALS=${TRIALS:-2}
 
 cd "$(dirname "$0")/../.."
-# The client imports the websocket helpers from the repo root and the benchmark
-# from the LIBERO-plus checkout.
-export PYTHONPATH="$(pwd):${LIBERO_HOME}:${PYTHONPATH:-}"
+# simpreload/ must come first — its sitecustomize.py loads torch+torchvision
+# before mujoco, without which the client segfaults. The client then imports the
+# websocket helpers from the repo root and the benchmark from LIBERO-plus.
+export PYTHONPATH="$(pwd)/tools/vlact_checks/simpreload:$(pwd):${LIBERO_HOME}:${PYTHONPATH:-}"
 
 OUT=results/liberoplus_smoke/$(date +%Y%m%d_%H%M%S)
 mkdir -p "$OUT"

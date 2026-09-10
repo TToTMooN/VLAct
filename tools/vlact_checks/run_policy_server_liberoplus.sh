@@ -9,6 +9,8 @@ PORT=${PORT:-9883}
 GPU=${GPU:-0}
 
 cd "$(dirname "$0")/../.."
+# server_policy.py imports `deployment.*` as a package from the repo root.
+export PYTHONPATH="$(pwd):${PYTHONPATH:-}"
 
 CUDA_VISIBLE_DEVICES=$GPU "$VLACT_PYTHON" deployment/model_server/server_policy.py \
     --ckpt_path "$CKPT" \
