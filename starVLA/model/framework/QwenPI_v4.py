@@ -37,6 +37,7 @@ Key pi0.5 features:
 """
 
 import math
+import os
 from typing import List, Optional, Tuple
 
 import numpy as np
@@ -54,6 +55,22 @@ from starVLA.training.trainer_utils import initialize_overwatch
 from starVLA.training.trainer_utils.trainer_tools import resize_images
 
 logger = initialize_overwatch(__name__)
+
+
+def _debug_assert_finite(name: str, value: torch.Tensor) -> None:
+    """Fail at the first non-finite stage when debugging numerical issues."""
+    if os.environ.get("VLA_DEBUG_FINITE") and not torch.isfinite(value).all():
+        finite = value[torch.isfinite(value)]
+        stats = (
+            f"finite_min={finite.min().item():.6g}, finite_max={finite.max().item():.6g}"
+            if finite.numel()
+            else "no finite values"
+        )
+        raise FloatingPointError(
+            f"{name} contains non-finite values: shape={tuple(value.shape)}, "
+            f"dtype={value.dtype}, nan={torch.isnan(value).sum().item()}, "
+            f"inf={torch.isinf(value).sum().item()}, {stats}"
+        )
 
 
 # ============================================================
@@ -391,12 +408,14 @@ class Qwen_PI_v4(baseframework):
                 return_dict=True,
             )
         last_hidden = outputs.hidden_states[-1]
+        _debug_assert_finite("qwen.last_hidden", last_hidden)
         prefix_proj_dtype = next(
             (param.dtype for param in self.prefix_proj.parameters()),
             last_hidden.dtype,
         )
         last_hidden = last_hidden.to(dtype=prefix_proj_dtype)
         prefix_hidden = self.prefix_proj(last_hidden)
+        _debug_assert_finite("qwen.prefix_hidden", prefix_hidden)
         return last_hidden, prefix_hidden, qwen_inputs
 
     def _encode_prefix(self, batch_images, instructions) -> torch.Tensor:
@@ -467,6 +486,7 @@ class Qwen_PI_v4(baseframework):
                 np.asarray(actions), device=prefix_hidden.device, dtype=prefix_hidden.dtype
             )
             actions_target = actions_tensor[:, -self.action_horizon:, :]
+            _debug_assert_finite("pi.actions_target", actions_target)
             action_valid_mask = None
             if any(mask is not None for mask in action_valid_masks):
                 action_valid_mask = torch.as_tensor(
@@ -496,7 +516,9 @@ class Qwen_PI_v4(baseframework):
 
             # Step 3: Expert
             time_cond = self._embed_timestep(t)
+            _debug_assert_finite("pi.time_cond", time_cond)
             v_pred = self._expert_forward(x_t, prefix_hidden_r, time_cond)
+            _debug_assert_finite("pi.velocity_pred", v_pred)
 
             loss, _, _ = flow_matching_loss_with_endpoint_wrap(
                 velocity_pred=v_pred,

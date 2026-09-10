@@ -432,10 +432,23 @@ class VLATrainer(TrainerUtils):
 
             self.accelerator.backward(total_loss)
 
+            if os.environ.get("VLA_DEBUG_FINITE"):
+                for name, param in self.model.named_parameters():
+                    if param.grad is not None and not torch.isfinite(param.grad).all():
+                        raise FloatingPointError(
+                            f"gradient for {name} became non-finite before clipping"
+                        )
+
             if self.accelerator.sync_gradients and self.config.trainer.gradient_clipping is not None:
                 self.accelerator.clip_grad_norm_(self.model.parameters(), self.config.trainer.gradient_clipping)
 
             self.optimizer.step()
+            if os.environ.get("VLA_DEBUG_FINITE"):
+                for name, param in self.model.named_parameters():
+                    if not torch.isfinite(param).all():
+                        raise FloatingPointError(
+                            f"parameter {name} became non-finite after optimizer.step()"
+                        )
             self.lr_scheduler.step()
             self.optimizer.zero_grad()
 
