@@ -52,18 +52,21 @@ matched = model_keys & ckpt.keys()
 unexpected = ckpt.keys() - model_keys
 missing = model_keys - ckpt.keys()
 
-print(f"\nmatched (transferred):    {len(matched)}")
-print(f"unexpected (dropped):     {len(unexpected)}")
-print(f"missing (random init):    {len(missing)}")
+print(f"\nmatched (from checkpoint):     {len(matched)}")
+print(f"unexpected (dropped):          {len(unexpected)}")
+# "Missing" means absent from the CPT checkpoint, not necessarily untrained:
+# QwenPI_v4's expert_layers come from the pretrained Qwen3-0.6B loaded by the
+# constructor, while the cross-attention, AdaRMSNorm and action projections are new.
+print(f"missing (not in checkpoint):   {len(missing)}")
 
 
 def ns(keys):
     return collections.Counter(k.split(".")[0] for k in keys)
 
 
-print(f"\ntransferred namespaces:  {dict(ns(matched))}")
-print(f"dropped namespaces:      {dict(ns(unexpected))}")
-print(f"random-init namespaces:  {dict(ns(missing))}")
+print(f"\ntransferred namespaces:   {dict(ns(matched))}")
+print(f"dropped namespaces:       {dict(ns(unexpected))}")
+print(f"not-in-checkpoint:        {dict(ns(missing))}")
 
 # The real load path: train_starvla.py -> load_state_dict(ckpt, strict=False)
 before = model.action_out_proj.weight.detach().clone()
