@@ -447,7 +447,9 @@ class VLATrainer(TrainerUtils):
                 grad_norm = self.accelerator.clip_grad_norm_(
                     self.model.parameters(), self.config.trainer.gradient_clipping
                 )
-                if not torch.isfinite(grad_norm):
+                # Accelerate's DeepSpeed wrapper may delegate clipping to the
+                # engine and return None rather than the norm.
+                if grad_norm is not None and not torch.isfinite(grad_norm):
                     raise FloatingPointError(
                         f"refusing optimizer step with non-finite gradient norm "
                         f"at step {self.completed_steps}"
