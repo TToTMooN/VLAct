@@ -1029,6 +1029,30 @@ class LeRobotSingleDataset(Dataset):
                 "fps": fps,
             }
 
+        if self.data_cfg and self.data_cfg.get("portable_bimanual_ee_rel", False):
+            # The backend already computed statistics over the expensive
+            # chunk-relative/model-facing representation.  Avoid scanning raw
+            # parquet here; these temporary state values are replaced by the
+            # custom transform metadata before mixture merging.
+            from starVLA.dataloader.gr00t_lerobot.transform.bimanual_ee_rel import (
+                load_bimanual_statistics,
+            )
+
+            state_stats, action_stats = load_bimanual_statistics(
+                self.data_cfg["bimanual_statistics_path"]
+            )
+            raw_state_stats = {
+                statistic: values[:20] for statistic, values in state_stats.items()
+            }
+            return DatasetMetadata(
+                statistics={
+                    "state": {"bimanual": raw_state_stats},
+                    "action": {"bimanual": action_stats},
+                },
+                modalities=simplified_modality_meta,
+                embodiment_tag=embodiment_tag,
+            )
+
 
         # 2. Dataset statistics
         def is_main():
@@ -4435,7 +4459,9 @@ class LeRobotMixtureDataset(Dataset):
             if dataset.normalization_group not in all_metadatas:
                 all_metadatas[dataset.normalization_group] = []
                 all_group_weights[dataset.normalization_group] = []
-            all_metadatas[dataset.normalization_group].append(dataset.metadata)
+            all_metadatas[dataset.normalization_group].append(
+                getattr(dataset, "transformed_metadata", dataset.metadata)
+            )
             all_group_weights[dataset.normalization_group].append(dataset_weight)
         for group_key, metadatas in all_metadatas.items():
             self.merged_metadata[group_key] = self.merge_metadata(
@@ -4560,6 +4586,10 @@ class LeRobotMixtureDataset(Dataset):
                     mask = generate_action_mask_for_used_keys(
                         merged_metadata.modalities.action, filtered_action_stats.keys()
                     )
+                    if self.data_cfg and self.data_cfg.get("portable_bimanual_ee_rel", False):
+                        if len(mask) != 20:
+                            raise ValueError(f"portable bimanual action mask must have 20 dims, got {len(mask)}")
+                        mask = [index not in (9, 19) for index in range(20)]
                     combined_action_stats["mask"] = mask
                     
                     tag_stats["action"] = combined_action_stats

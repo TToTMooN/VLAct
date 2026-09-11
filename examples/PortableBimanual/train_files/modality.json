@@ -1,0 +1,33 @@
+{
+  "state": {
+    "bimanual": {
+      "start": 0,
+      "end": 20,
+      "original_key": "observation.state",
+      "dtype": "float32",
+      "absolute": true
+    }
+  },
+  "action": {
+    "bimanual": {
+      "start": 0,
+      "end": 20,
+      "original_key": "action",
+      "dtype": "float32",
+      "absolute": true
+    }
+  },
+  "video": {
+    "left_wrist": {
+      "original_key": "observation.images.left_head"
+    },
+    "right_wrist": {
+      "original_key": "observation.images.right_head"
+    }
+  },
+  "annotation": {
+    "human.action.task_description": {
+      "original_key": "task_index"
+    }
+  }
+}

@@ -122,7 +122,7 @@ def make_LeRobotSingleDataset(
     normalization_group = embodiment_tag.value
     
     video_backend = effective_data_cfg.get("video_backend", "decord") if effective_data_cfg else "torchvision_av"
-    return LeRobotSingleDataset(
+    dataset = LeRobotSingleDataset(
         dataset_path=dataset_path,
         modality_configs=modality_config,
         transforms=transforms,
@@ -133,6 +133,12 @@ def make_LeRobotSingleDataset(
         delete_pause_frame=delete_pause_frame,
         data_cfg=effective_data_cfg,
     )
+    if getattr(data_config, "supplies_transformed_metadata", False):
+        # Keep raw metadata on the dataset so absolute parquet rows retain
+        # first/last padding semantics.  Mixture statistics use this separate
+        # model-facing metadata below.
+        dataset.transformed_metadata = transforms.dataset_metadata
+    return dataset
 
 def get_vla_dataset(
     data_cfg: dict,
@@ -149,7 +155,25 @@ def get_vla_dataset(
     data_mix = data_cfg.data_mix
     delete_pause_frame = data_cfg.get("delete_pause_frame", False)
     balance_dataset_weights = data_cfg.get("balance_dataset_weights", balance_dataset_weights)
-    mixture_spec = DATASET_NAMED_MIXTURES[data_mix]
+    if data_mix in DATASET_NAMED_MIXTURES:
+        mixture_spec = DATASET_NAMED_MIXTURES[data_mix]
+    else:
+        dataset_names = data_cfg.get("dataset_names", None)
+        robot_type = data_cfg.get("robot_type", None)
+        if not dataset_names or not robot_type:
+            raise KeyError(
+                f"Unknown data_mix `{data_mix}`. For backend-generated datasets, provide "
+                "datasets.vla_data.dataset_names and robot_type."
+            )
+        if isinstance(dataset_names, str):
+            dataset_names = [name.strip() for name in dataset_names.split(",") if name.strip()]
+        weights = data_cfg.get("dataset_weights", [1.0] * len(dataset_names))
+        if len(weights) != len(dataset_names):
+            raise ValueError("dataset_weights must have the same length as dataset_names")
+        mixture_spec = [
+            (str(name), float(weight), str(robot_type))
+            for name, weight in zip(dataset_names, weights)
+        ]
     included_datasets, filtered_mixture_spec = set(), []
     root_path = Path(data_root_dir)
     for d_name, d_weight, robot_type in mixture_spec:

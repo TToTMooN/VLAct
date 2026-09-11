@@ -10,6 +10,7 @@ from omegaconf import OmegaConf
 
 from starVLA.dataloader.gr00t_lerobot.datasets import ModalityConfig
 from starVLA.dataloader.gr00t_lerobot.transform.base import ComposedModalityTransform, ModalityTransform
+from starVLA.dataloader.gr00t_lerobot.transform.bimanual_ee_rel import BimanualEERelTransform
 from starVLA.dataloader.gr00t_lerobot.transform.concat import ConcatTransform
 from starVLA.dataloader.gr00t_lerobot.transform.state_action import (
     StateActionSignFlipTransform,
@@ -1863,6 +1864,51 @@ class RoboCoinJointFlipWrapDataConfig(RoboCoinDataConfig):
         )
 
 
+class PortableBimanualEERelDataConfig:
+    """Canonical vla-hub bimanual pose layout with portable EE-relative targets."""
+
+    video_keys = ["video.left_wrist", "video.right_wrist"]
+    state_keys = ["state.bimanual"]
+    action_keys = ["action.bimanual"]
+    language_keys = ["annotation.human.action.task_description"]
+    observation_indices = [0]
+    state_indices = [-5, 0]
+    action_indices = list(range(24))
+    supplies_transformed_metadata = True
+
+    def dataset_defaults(self) -> dict[str, object]:
+        return {
+            "action_mode": "abs",
+            "action_type": "bimanual_chunk_anchor_relative",
+            "include_state": True,
+            "portable_bimanual_ee_rel": True,
+        }
+
+    def modality_config(self):
+        return {
+            "video": ModalityConfig(delta_indices=self.observation_indices, modality_keys=self.video_keys),
+            "state": ModalityConfig(delta_indices=self.state_indices, modality_keys=self.state_keys),
+            "action": ModalityConfig(delta_indices=self.action_indices, modality_keys=self.action_keys),
+            "language": ModalityConfig(delta_indices=self.observation_indices, modality_keys=self.language_keys),
+        }
+
+    def transform(self, data_cfg=None):
+        stats_path = None if data_cfg is None else (
+            data_cfg.get("bimanual_statistics_path") or data_cfg.get("pretrained_stats_path")
+        )
+        if not stats_path:
+            raise ValueError(
+                "portable_bimanual_ee_rel requires data_cfg.bimanual_statistics_path "
+                "from the vla-hub parquet stats backend"
+            )
+        return ComposedModalityTransform(
+            transforms=[
+                *_build_configured_video_resize_transforms(data_cfg=data_cfg, video_keys=self.video_keys),
+                BimanualEERelTransform(statistics_path=str(stats_path)),
+            ]
+        )
+
+
 ROBOT_TYPE_CONFIG_MAP = {
     "libero_franka": Libero4in1DataConfig(),
     "vla_arena_franka": VLAArenaFrankaDataConfig(),
@@ -1881,6 +1927,7 @@ ROBOT_TYPE_CONFIG_MAP = {
     "robotwin_wrap32": AgilexWrapData32Config(),
     "robotwin_wrap50": AgilexWrapData50Config(),
     "ROBOCOIN.AgileX_flip_wrap": RoboCoinJointFlipWrapDataConfig(),
+    "portable_bimanual_ee_rel": PortableBimanualEERelDataConfig(),
     "fourier_gr1_arms_waist": FourierGr1ArmsWaistDataConfig(),
     "molmoact_franka_exterior1_wrist_manualvel_strict_50": MolmoActFrankaExterior1WristStrictManualVelocityData50Config(),
     "molmoact_franka_exterior2_wrist_manualvel_strict_50": MolmoActFrankaExterior2WristStrictManualVelocityData50Config(),
